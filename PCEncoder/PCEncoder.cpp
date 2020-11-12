@@ -18,7 +18,7 @@ public:
 	T y;
 	T z;
 
-	Vec3() : x(0), y(0), z(0) {}
+	Vec3() {}
 	Vec3(T val1, T val2, T val3) : x(val1), y(val2), z(val3) {}
 
 	// 类型转换
@@ -89,9 +89,18 @@ public:
 		y = (y > rhs.y ? y : rhs.y);
 		z = (z > rhs.z ? z : rhs.z);
 	}
+
+	static Vec3 zero() {
+		return Vec3(0, 0, 0);
+	}
 };
 using Vec3u8 = Vec3<uint8_t>;
 using Vec3i32 = Vec3<int>;
+
+enum class ColorSpace {
+	RGB = 0,
+	YUV = 1
+};
 
 struct Point {
 	Vec3i32 position;
@@ -136,11 +145,12 @@ struct EncodeTreeNode {
 struct DecodeTreeNode {
 	Vec3i32 origin;
 	int edgeLength;
+	int level;
 };
 
 class Slice {
 public:
-	Slice(const Vec3i32& origin, uint32_t edgeLength) : origin(origin), edgeLength(edgeLength) {}
+	Slice(const Vec3i32& origin, int edgeLength, int clipDepth) : origin(origin), edgeLength(edgeLength), clipDepth(clipDepth) {}
 
 	void addPoint(const Point& p) {
 		points.push_back(p);
@@ -153,14 +163,20 @@ public:
 		return points.empty();
 	}
 
-	void encode(int maxDepth) {
+	void encode() {
 		if (points.empty())
-			throw logic_error("No point to encode");
+			return;
 
 		EncodeTreeNode headNode;
 		headNode.origin = origin;
 		headNode.edgeLength = edgeLength;
-		headNode.level = 0;
+		headNode.level = _tzcnt_u32(edgeLength) - clipDepth;  // 往下深入时level递减，归零时强制停止
+		// 这一个分片在开头就被剪掉了
+		if (headNode.level < 0) {
+			points.clear();
+			return;
+		}
+
 		headNode.sliceDataIndex.resize(points.size());
 		for (int i = 0; i < points.size(); ++i) {
 			headNode.sliceDataIndex[i] = i;
@@ -170,81 +186,85 @@ public:
 		q.push(headNode);
 		do {
 			const auto& node = q.front();
-			// 到达最大深度时平均剩下的点的颜色
-			if (node.level == maxDepth) {
-				if (!node.sliceDataIndex.empty()) {
-					Vec3i32 sum;
-					int num = node.sliceDataIndex.size();
-					for (int index : node.sliceDataIndex) {
-						sum += Vec3i32(points[index].color);
+			auto halfLength = node.edgeLength / 2;
+			auto center = node.origin + halfLength;
+			array<vector<int>, 8> subSlicesDataIndex;
+			for (int index : node.sliceDataIndex) {
+				Vec3i32 diff = points[index].position - center;
+				int subIndex;
+				if (diff.x < 0) {
+					if (diff.y < 0) {
+						if (diff.z < 0)
+							subIndex = 0;
+						else
+							subIndex = 1;
 					}
-					encodedTree.push_back(0);
-					encodedColor.push_back(Vec3u8(sum / num));
-				}
-			}
-			else {
-				// 整2次幂二分到最后必然只剩一个点在节点原点处
-				if (node.edgeLength == 1) {
-					encodedTree.push_back(0);
-					encodedColor.push_back(points[node.sliceDataIndex[0]].color);
+					else {
+						if (diff.z < 0)
+							subIndex = 2;
+						else
+							subIndex = 3;
+					}
 				}
 				else {
-					auto halfLength = node.edgeLength / 2;
-					auto center = node.origin + halfLength;
-					array<vector<int>, 8> subSlicesDataIndex;
-					for (int index : node.sliceDataIndex) {
-						Vec3i32 diff = points[index].position - center;
-						int subIndex;
-						if (diff.x < 0) {
-							if (diff.y < 0) {
-								if (diff.z < 0)
-									subIndex = 0;
-								else
-									subIndex = 1;
-							}
-							else {
-								if (diff.z < 0)
-									subIndex = 2;
-								else
-									subIndex = 3;
-							}
-						}
-						else {
-							if (diff.y < 0) {
-								if (diff.z < 0)
-									subIndex = 4;
-								else
-									subIndex = 5;
-							}
-							else {
-								if (diff.z < 0)
-									subIndex = 6;
-								else
-									subIndex = 7;
-							}
-						}
-						subSlicesDataIndex[subIndex].push_back(index);
-					}
-
-					int controlByte = 0;
-					for (int i = 0; i < 8; ++i) {
-						controlByte <<= 1;
-						if (!subSlicesDataIndex[i].empty()) {
-							controlByte |= 1;
-							EncodeTreeNode nextNode;
-							nextNode.origin = Vec3i32((i & 4 ? center.x : node.origin.x),
-													  (i & 2 ? center.y : node.origin.y),
-													  (i & 1 ? center.z : node.origin.z));
-							nextNode.edgeLength = halfLength;
-							nextNode.level = node.level + 1;
-							nextNode.sliceDataIndex = subSlicesDataIndex[i];
-							q.push(nextNode);
-						}
+					if (diff.y < 0) {
+						if (diff.z < 0)
+							subIndex = 4;
 						else
-							controlByte |= 0;
+							subIndex = 5;
 					}
-					encodedTree.push_back(controlByte);
+					else {
+						if (diff.z < 0)
+							subIndex = 6;
+						else
+							subIndex = 7;
+					}
 				}
+				subSlicesDataIndex[subIndex].push_back(index);
+			}
+
+			int controlByte = 0;
+			for (int i = 0; i < 8; ++i) {
+				controlByte <<= 1;
+				if (!subSlicesDataIndex[i].empty()) {
+					controlByte |= 1;
+					if (node.level > 1) {
+						EncodeTreeNode nextNode;
+						nextNode.origin = Vec3i32((i & 4 ? center.x : node.origin.x),
+												  (i & 2 ? center.y : node.origin.y),
+												  (i & 1 ? center.z : node.origin.z));
+						nextNode.edgeLength = halfLength;
+						nextNode.level = node.level - 1;
+						nextNode.sliceDataIndex = subSlicesDataIndex[i];
+						q.push(nextNode);
+					}
+					else {
+						// 倒数第二层已经得到叶子层结构，不需要写入输出流
+						// 获得明度信息
+						int sum = 0;
+						int num = subSlicesDataIndex[i].size();
+						for (int index : subSlicesDataIndex[i]) {
+							sum += points[index].color.x;
+						}
+						encodedColor.push_back(lroundf((float)sum / num));
+					}
+				}
+				else
+					controlByte |= 0;
+			}
+			encodedTree.push_back(controlByte);
+
+			// 倒数第二层，进行色度采样
+			if (node.level == 1) {
+				int sum1 = 0, sum2 = 0;
+				int num = node.sliceDataIndex.size();
+				for (int index : node.sliceDataIndex) {
+					sum1 += points[index].color.y;
+					sum2 += points[index].color.z;
+				}
+				encodedColor.push_back(lroundf((float)sum1 / num));
+				encodedColor.push_back(lroundf((float)sum2 / num));
+
 			}
 
 			q.pop();
@@ -253,26 +273,51 @@ public:
 
 	// 返回解码的点数
 	int decode() {
+		int level = _tzcnt_u32(edgeLength) - clipDepth;
 		queue<DecodeTreeNode> q;
-		q.push({ origin, edgeLength });
+		q.push({ origin, edgeLength, level });
 		int treeIndex = 0;
 		int colorIndex = 0;
 		do {
 			const auto& node = q.front();
 			int controlByte = encodedTree[treeIndex];
 			treeIndex++;
-			if (controlByte == 0) {
-				const auto& color = encodedColor[colorIndex];
-				colorIndex++;
-				// 深度受限时应该在整个节点对应的块上显示而不是缩成一个点...
-				int num = node.edgeLength;
-				for (int i = 0; i < num; ++i) {
-					for (int j = 0; j < num; ++j) {
-						for (int k = 0; k < num; ++k) {
-							points.push_back({ node.origin + Vec3i32(i, j, k), color });
+			// 倒数第二层读取颜色
+			if (node.level == 1) {
+				// 首先读取明度
+				vector<Point> buffer;
+				for (int i = 0; i < 8; ++i) {
+					if (controlByte & 0x80) {
+						int halfLength = node.edgeLength / 2;
+						auto center = node.origin + halfLength;
+						auto subNodeOrigin = Vec3i32((i & 4 ? center.x : node.origin.x),
+													 (i & 2 ? center.y : node.origin.y),
+													 (i & 1 ? center.z : node.origin.z));
+
+						// 深度受限时应该在整个节点对应的块上显示而不是缩成一个点...
+						uint8_t luma = encodedColor[colorIndex];
+						colorIndex++;
+						for (int x = 0; x < halfLength; ++x) {
+							for (int y = 0; y < halfLength; ++y) {
+								for (int z = 0; z < halfLength; ++z) {
+									buffer.push_back({ subNodeOrigin + Vec3i32(x, y, z), Vec3u8(luma, 0, 0) });
+								}
+							}
 						}
 					}
+					controlByte <<= 1;
 				}
+
+				// 然后读取色度
+				uint8_t chroma1 = encodedColor[colorIndex];
+				uint8_t chroma2 = encodedColor[colorIndex + 1];
+				colorIndex += 2;
+				for (auto& p : buffer) {
+					p.color.y = chroma1;
+					p.color.z = chroma2;
+				}
+
+				points.insert(points.end(), buffer.begin(), buffer.end());
 			}
 			else {
 				for (int i = 0; i < 8; ++i) {
@@ -284,11 +329,13 @@ public:
 												  (i & 2 ? center.y : node.origin.y),
 												  (i & 1 ? center.z : node.origin.z));
 						nextNode.edgeLength = halfLength;
+						nextNode.level = node.level - 1;
 						q.push(nextNode);
 					}
 					controlByte <<= 1;
 				}
 			}
+
 			q.pop();
 		} while (!q.empty());
 
@@ -306,25 +353,26 @@ public:
 		out.write((char*)&origin, 12);
 		out.write((char*)&treeNum, 4);
 		out.write((char*)&colorsNum, 4);
-		out.write((char*)&tzNum, 1);
+		out.put(tzNum);
+		out.put(clipDepth);
 		out.write((char*)encodedTree.data(), treeNum);
-		out.write((char*)encodedColor.data(), colorsNum * 3);
-		return 12 + 4 + 4 + 1 + treeNum + colorsNum * 3;
+		out.write((char*)encodedColor.data(), colorsNum);
+		return 12 + 4 + 4 + 1 + treeNum + colorsNum;
 	}
 	static Slice readFromBin(ifstream& in) {
 		Vec3i32 origin;
 		int treeNum, colorsNum;
-		uint8_t tzNum;
 		in.read((char*)&origin, 12);
 		in.read((char*)&treeNum, 4);
 		in.read((char*)&colorsNum, 4);
-		in.read((char*)&tzNum, 1);
+		uint8_t tzNum = in.get();
+		int clipDepth = in.get();
 
-		Slice slice(origin, 1 << tzNum);
+		Slice slice(origin, 1 << tzNum, clipDepth);
 		slice.encodedTree.resize(treeNum);
-		slice.encodedColor.resize(colorsNum * 3);
+		slice.encodedColor.resize(colorsNum);
 		in.read((char*)slice.encodedTree.data(), treeNum);
-		in.read((char*)slice.encodedColor.data(), colorsNum * 3);
+		in.read((char*)slice.encodedColor.data(), colorsNum);
 
 		return slice;
 	}
@@ -332,9 +380,10 @@ public:
 private:
 	Vec3i32 origin;
 	int edgeLength;
+	int clipDepth;
 	vector<Point> points;
 	vector<char> encodedTree;
-	vector<Vec3u8> encodedColor;
+	vector<uint8_t> encodedColor;
 };
 
 class PCEncoder {
@@ -343,9 +392,10 @@ public:
 	string pathIn;
 	string pathOut;
 	int sliceMaxEdgeLength;   // 必须是2的整次幂（默认64）
-	int maxDepth;  // 树的最大深度，与上面的边长有关联
+	int clipDepth;      // 从底剪除的层数
+	ColorSpace cspIn;   // 输入颜色空间
 
-	PCEncoder() : sliceMaxEdgeLength(64), maxDepth(6) {}
+	PCEncoder() : sliceMaxEdgeLength(64), clipDepth(0), cspIn(ColorSpace::RGB) {}
 
 	void encode() {
 		// 参数检查
@@ -362,7 +412,7 @@ public:
 		for (int i = 0; i < sliceNum.x; ++i) {
 			for (int j = 0; j < sliceNum.y; ++j) {
 				for (int k = 0; k < sliceNum.z; ++k) {
-					slices.emplace_back(Vec3i32(i, j, k) * sliceMaxEdgeLength, sliceMaxEdgeLength);
+					slices.emplace_back(Vec3i32(i, j, k) * sliceMaxEdgeLength, sliceMaxEdgeLength, clipDepth);
 				}
 			}
 		}
@@ -379,7 +429,7 @@ public:
 		// 压缩分片
 		for (auto& slice : slices) {
 			if (!slice.empty()) {
-				slice.encode(maxDepth);
+				slice.encode();
 			}
 		}
 
@@ -438,7 +488,19 @@ private:
 			// 如果要区分整数和浮点可能需要参数指定
 			int x, y, z, r, g, b;
 			in >> x >> y >> z >> r >> g >> b;
-			inputBuffer.push(x, y, z, r, g, b);
+
+			if (cspIn == ColorSpace::RGB) {
+				// RGB -> YCbCr, 变换矩阵随便找的一个，能用就行
+				int c1 = lroundf(0.299f * r + 0.587f * g + 0.114f * b);
+				int c2 = lroundf(-0.169f * r - 0.331f * g + 0.499f * b) + 128;
+				int c3 = lroundf(0.499f * r - 0.418f * g - 0.0813f * b) + 128;
+				c1 = (c1 > 255 ? 255 : (c1 < 0 ? 0 : c1));
+				c2 = (c2 > 255 ? 255 : (c2 < 0 ? 0 : c2));
+				c3 = (c3 > 255 ? 255 : (c3 < 0 ? 0 : c3));
+				inputBuffer.push(x, y, z, c1, c2, c3);
+			}
+			else
+				inputBuffer.push(x, y, z, r, g, b);
 		}
 	}
 
@@ -457,16 +519,22 @@ private:
 		int length = lengthTable.size();
 		out.write((char*)lengthTable.data(), length * 4);
 		out.write((char*)&length, 4);
+
+		// 写入CSP
+		out.put((char)cspIn);
 	}
 
 	void readBin() {
 		ifstream in(pathIn, ios::binary);
-		// 读取长度表偏移
-		in.seekg(-4, SEEK_END);
+		// 读取CSP
+		in.seekg(-1, SEEK_END);
+		cspIn = (ColorSpace)in.get();
+		// 读取长度表偏移（还要补偿CSP的1B）
+		in.seekg(-5, SEEK_END);
 		int length;
 		in.read((char*)&length, 4);
-		// 读取长度表
-		in.seekg(-(length * 4), SEEK_CUR);
+		// 读取长度表（还要补偿读取长度的4B）
+		in.seekg(-(length * 4) - 4, SEEK_CUR);
 		vector<int> lengthTable(length);
 		in.read((char*)lengthTable.data(), length * 4);
 
@@ -494,8 +562,18 @@ private:
 			const auto& points = slice.getPoints();
 			for (const auto& p : points) {
 				out << p.position.x << ' ' << p.position.y << ' ' << p.position.z << ' ';
-				auto [r, g, b] = Vec3i32(p.color);
-				out << r << ' ' << g << ' ' << b << '\n';
+				auto [y, u, v] = Vec3i32(p.color);
+				if (cspIn == ColorSpace::RGB) {
+					int r = lroundf(y + 1.402f * (v - 128));
+					int g = lroundf(y - 0.344f * (u - 128) - 0.714f * (v - 128));
+					int b = lroundf(y + 1.772f * (u - 128));
+					r = (r > 255 ? 255 : (r < 0 ? 0 : r));
+					g = (g > 255 ? 255 : (g < 0 ? 0 : g));
+					b = (b > 255 ? 255 : (b < 0 ? 0 : b));
+					out << r << ' ' << g << ' ' << b << '\n';
+				}
+				else
+					out << y << ' ' << u << ' ' << v << '\n';
 			}
 		}
 	}
@@ -503,10 +581,9 @@ private:
 
 int main() {
 	PCEncoder encoder;
-	encoder.pathIn = "ricardo9_frame0017.ply";
-	encoder.pathOut = "test.bin";
-	encoder.maxDepth = 6;
-	encoder.encode();
+	//encoder.pathIn = "ricardo9_frame0017.ply";
+	//encoder.pathOut = "test.bin";
+	//encoder.encode();
 	encoder.pathIn = "test.bin";
 	encoder.pathOut = "decode.ply";
 	encoder.decode();
