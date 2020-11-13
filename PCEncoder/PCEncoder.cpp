@@ -8,6 +8,7 @@
 #include <queue>
 #include <immintrin.h>
 #include <cinttypes>
+#include <string_view>
 using namespace std;
 
 // 这个可以调库
@@ -342,37 +343,40 @@ public:
 		return points.size();
 	}
 
-	// 写入文件，返回写入字节数（也要确认非空）
-	int writeToBin(ostream& out) const {
-		if (points.empty())
-			throw logic_error("No point to write");
-
+	string serialize() const {
+		string result;
 		uint8_t tzNum = _tzcnt_u32(edgeLength);  // 保存边长对应的(1<<N)移位量，可以用8bit存下
 		int treeNum = encodedTree.size();
 		int colorsNum = encodedColor.size();
-		out.write((char*)&origin, 12);
-		out.write((char*)&treeNum, 4);
-		out.write((char*)&colorsNum, 4);
-		out.put(tzNum);
-		out.put(clipDepth);
-		out.write((char*)encodedTree.data(), treeNum);
-		out.write((char*)encodedColor.data(), colorsNum);
-		return 12 + 4 + 4 + 1 + treeNum + colorsNum;
+		result.insert(result.size(), (char*)&origin, 12);
+		result.insert(result.size(), (char*)&treeNum, 4);
+		result.insert(result.size(), (char*)&colorsNum, 4);
+		result += tzNum;
+		result += clipDepth;
+		result.insert(result.size(), (char*)encodedTree.data(), treeNum);
+		result.insert(result.size(), (char*)encodedColor.data(), colorsNum);
+		return result;
 	}
-	static Slice readFromBin(ifstream& in) {
+	static Slice parse(string_view view) {
 		Vec3i32 origin;
 		int treeNum, colorsNum;
-		in.read((char*)&origin, 12);
-		in.read((char*)&treeNum, 4);
-		in.read((char*)&colorsNum, 4);
-		uint8_t tzNum = in.get();
-		int clipDepth = in.get();
+		int index = 0;
+		memcpy(&origin, &view[index], 12);
+		index += 12;
+		memcpy(&treeNum, &view[index], 4);
+		index += 4;
+		memcpy(&colorsNum, &view[index], 4);
+		index += 4;
+		uint8_t tzNum = view[index];
+		int clipDepth = view[index + 1];
+		index += 2;
 
 		Slice slice(origin, 1 << tzNum, clipDepth);
 		slice.encodedTree.resize(treeNum);
 		slice.encodedColor.resize(colorsNum);
-		in.read((char*)slice.encodedTree.data(), treeNum);
-		in.read((char*)slice.encodedColor.data(), colorsNum);
+		memcpy(slice.encodedTree.data(), &view[index], treeNum);
+		index += treeNum;
+		memcpy(slice.encodedColor.data(), &view[index], colorsNum);
 
 		return slice;
 	}
@@ -384,6 +388,16 @@ private:
 	vector<Point> points;
 	vector<char> encodedTree;
 	vector<uint8_t> encodedColor;
+};
+
+class EntropyEncoder {
+public:
+	string encode(const string& byteStream) {
+		return byteStream;
+	}
+	string decode(const string& byteStream) {
+		return byteStream;
+	}
 };
 
 class PCEncoder {
@@ -455,6 +469,7 @@ public:
 private:
 	PointBuffer inputBuffer;
 	vector<Slice> slices;
+	EntropyEncoder entropy;
 
 	void readPly() {
 		// 暂时不考虑非法格式和文件头解析
@@ -505,44 +520,55 @@ private:
 	}
 
 	void writeBin() {
-		// 写入分片数据
-		ofstream out(pathOut, ios::binary);    // 分片长度表，用于快速寻址分片
-		vector<int> lengthTable;
+		string byteStream;
+		vector<int> lengthTable;    // 分片长度表，用于快速寻址分片
 		for (const auto& slice : slices) {
 			if (!slice.empty()) {
-				int length = slice.writeToBin(out);
-				lengthTable.push_back(length);
+				const auto& temp = slice.serialize();
+				lengthTable.push_back(temp.size());
+				byteStream += temp;
 			}
 		}
 
 		// 最后写入长度表和长度表偏移
 		int length = lengthTable.size();
-		out.write((char*)lengthTable.data(), length * 4);
-		out.write((char*)&length, 4);
-
+		byteStream.insert(byteStream.size(), (char*)lengthTable.data(), length * 4);
+		byteStream.insert(byteStream.size(), (char*)&length, 4);
 		// 写入CSP
-		out.put((char)cspIn);
+		byteStream += (char)cspIn;
+
+		byteStream = entropy.encode(byteStream);
+
+		ofstream out(pathOut, ios::binary);
+		out.write(byteStream.c_str(), byteStream.size());
 	}
 
 	void readBin() {
-		ifstream in(pathIn, ios::binary);
-		// 读取CSP
-		in.seekg(-1, SEEK_END);
-		cspIn = (ColorSpace)in.get();
-		// 读取长度表偏移（还要补偿CSP的1B）
-		in.seekg(-5, SEEK_END);
-		int length;
-		in.read((char*)&length, 4);
-		// 读取长度表（还要补偿读取长度的4B）
-		in.seekg(-(length * 4) - 4, SEEK_CUR);
-		vector<int> lengthTable(length);
-		in.read((char*)lengthTable.data(), length * 4);
-
-		// 读取length个切片（顺序读的话倒是不用seek）
+		ifstream in(pathIn, ios::binary | ios::ate);
+		int bytesNum = in.tellg();
 		in.seekg(0);
+		string byteStream;
+		byteStream.resize(bytesNum);
+		in.read(byteStream.data(), bytesNum);
+		in.close();
+
+		byteStream = entropy.decode(byteStream);
+
+		int index = byteStream.size() - 1;
+		cspIn = (ColorSpace)byteStream[index];
+		index -= 4;
+		int length;
+		memcpy(&length, &byteStream[index], 4);
+		vector<int> lengthTable(length);
+		index -= length * 4;
+		memcpy(lengthTable.data(), &byteStream[index], length * 4);
+
+		index = 0;
+		string_view view(byteStream);
 		slices.reserve(length);
-		for (int i = 0; i < length; ++i) {
-			slices.push_back(Slice::readFromBin(in));
+		for (int len : lengthTable) {
+			slices.push_back(Slice::parse(view.substr(index, len)));
+			index += len;
 		}
 	}
 
@@ -581,9 +607,9 @@ private:
 
 int main() {
 	PCEncoder encoder;
-	//encoder.pathIn = "ricardo9_frame0017.ply";
-	//encoder.pathOut = "test.bin";
-	//encoder.encode();
+	encoder.pathIn = "ricardo9_frame0017.ply";
+	encoder.pathOut = "test.bin";
+	encoder.encode();
 	encoder.pathIn = "test.bin";
 	encoder.pathOut = "decode.ply";
 	encoder.decode();
