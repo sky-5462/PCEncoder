@@ -9,6 +9,7 @@
 #include <immintrin.h>
 #include <cinttypes>
 #include <string_view>
+#include "huffman.h"
 using namespace std;
 
 // 这个可以调库
@@ -393,10 +394,12 @@ private:
 class EntropyEncoder {
 public:
 	string encode(const string& byteStream) {
-		return byteStream;
+		//return byteStream;
+		return huffman_encode_string(byteStream);
 	}
 	string decode(const string& byteStream) {
-		return byteStream;
+		//return byteStream;
+		return huffman_decode_string(byteStream);
 	}
 };
 
