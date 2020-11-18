@@ -15,8 +15,37 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="PCEncoder.cpp">
+    <ClCompile Include="src\huffman.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="src\PCEncoder.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="src\IO.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="src\Slice.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="src\RLE.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="include\huffman.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="include\common.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="include\IO.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="include\Slice.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="include\RLE.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
