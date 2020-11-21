@@ -30,6 +30,9 @@
     <ClCompile Include="src\RLE.cpp">
       <Filter>源文件</Filter>
     </ClCompile>
+    <ClCompile Include="src\zlibfunc.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="include\huffman.h">
@@ -45,6 +48,15 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="include\RLE.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="include\zconf.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="include\zlib.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="include\zlibfunc.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>

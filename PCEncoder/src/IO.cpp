@@ -3,6 +3,7 @@
 #include <tuple>
 
 
+
 // 8-bit transform
 static std::tuple<int, int, int> RGBToYUV(int r, int g, int b) {
 	// 变换矩阵随便找的一个，能用就行
@@ -122,6 +123,9 @@ std::string IO::readBin(const std::string& path) const {
 	else if (entropyType == EntropyEncodeType::RLE_HUFFMAN) {
 		stream = runLengthDecode(huffman_decode_string(stream));
 	}
+	else if (entropyType == EntropyEncodeType::ZLIB) {
+		stream = zlib_decode_string(stream);
+	}
 	return stream;
 }
 
@@ -137,6 +141,10 @@ void IO::writeBin(const std::string& path, const std::string& stream) const {
 	}
 	else if (entropyType == EntropyEncodeType::RLE_HUFFMAN) {
 		auto encodedStream = huffman_encode_string(runLengthEncode(stream));
+		out.write(encodedStream.c_str(), encodedStream.size());
+	}
+	else if (entropyType == EntropyEncodeType::ZLIB) {
+		auto encodedStream = zlib_encode_string(stream);
 		out.write(encodedStream.c_str(), encodedStream.size());
 	}
 	else

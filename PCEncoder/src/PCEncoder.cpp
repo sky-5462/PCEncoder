@@ -116,7 +116,7 @@ int main() {
 	encoder.pathIn = "ricardo9_frame0017.ply";
 	encoder.pathOut = "test.bin";
 	encoder.isChromasubsampling = true;
-	encoder.ioParameters.entropyType = EntropyEncodeType::HUFFMAN;
+	encoder.ioParameters.entropyType = EntropyEncodeType::ZLIB;
 	encoder.encode();
 	encoder.pathIn = "test.bin";
 	encoder.pathOut = "decode.ply";
