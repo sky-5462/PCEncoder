@@ -1,7 +1,9 @@
 #pragma once
-
+#pragma comment(lib, ".\\lib\\zlibstat.lib") 
+#include <zlib.h>
 #include <common.h>
 #include <huffman.h>
+#include <zlibfunc.h>
 #include <RLE.h>
 #include <fstream>
 #include <string>
@@ -19,7 +21,8 @@ enum class EntropyEncodeType {
 	NONE,
 	RLE,
 	HUFFMAN,
-	RLE_HUFFMAN
+	RLE_HUFFMAN,
+	ZLIB
 };
 
 struct IOParameters {
