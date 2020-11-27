@@ -40,6 +40,8 @@ PointBuffer IO::readText(const std::string& path) const {
 		end_header
 	*/
 	std::ifstream in(path);
+	if (!in.is_open())
+		throw logic_error("Invalid path to read text");
 	int pointNum;
 	std::string skip;
 	in >> skip;  // ply
@@ -77,6 +79,9 @@ PointBuffer IO::readText(const std::string& path) const {
 
 void IO::writeText(const std::string& path, const PointBuffer& buffer) const {
 	std::ofstream out(path);
+	if (!out.is_open())
+		throw logic_error("Invalid path to write text");
+
 	out << "ply\n";
 	out << "format ascii 1.0\n";
 	out << "element vertex " << buffer.size() << '\n';
@@ -107,6 +112,9 @@ void IO::writeText(const std::string& path, const PointBuffer& buffer) const {
 
 std::string IO::readBin(const std::string& path) const {
 	std::ifstream in(path, std::ios::binary | std::ios::ate);
+	if (!in.is_open())
+		throw logic_error("Invalid path to read binary");
+
 	int bytesNum = in.tellg();
 	in.seekg(0);
 	std::string stream;
@@ -131,6 +139,8 @@ std::string IO::readBin(const std::string& path) const {
 
 void IO::writeBin(const std::string& path, const std::string& stream) const {
 	std::ofstream out(path, ios::binary);
+	if (!out.is_open())
+		logic_error("Invalid path to write binary");
 	if (entropyType == EntropyEncodeType::HUFFMAN) {
 		auto encodedStream = huffman_encode_string(stream);
 		out.write(encodedStream.c_str(), encodedStream.size());

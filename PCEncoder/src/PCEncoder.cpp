@@ -53,6 +53,12 @@ public:
 		buffer.clear();
 
 		// 这里可以插入分片分裂以及质量控制相关的操作
+		std::vector<Slice> splitedSlices;
+		for (const auto& slice : slices) {
+			auto splited = Slice::split(slice);
+			splitedSlices.insert(splitedSlices.end(), splited.begin(), splited.end());
+		}
+		slices = splitedSlices;
 
 		// 压缩分片
 		for (auto& slice : slices) {
@@ -116,7 +122,7 @@ int main() {
 	encoder.pathIn = "ricardo9_frame0017.ply";
 	encoder.pathOut = "test.bin";
 	encoder.isChromasubsampling = true;
-	encoder.ioParameters.entropyType = EntropyEncodeType::ZLIB;
+	encoder.ioParameters.entropyType = EntropyEncodeType::HUFFMAN;
 	encoder.encode();
 	encoder.pathIn = "test.bin";
 	encoder.pathOut = "decode.ply";
