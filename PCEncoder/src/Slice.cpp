@@ -91,7 +91,7 @@ std::vector<Slice> Slice::split(const Slice& slice) {
 	return result;
 }
 
-void Slice::encode() {
+void Slice::encode(int quantizationBits) {
 	if (points.empty())
 		return;
 
@@ -240,8 +240,10 @@ void Slice::encode() {
 					for (int index : subSlicesDataIndex[i]) {
 						sum += points[index].color.x;
 					}
-					int luma = lroundf((float)sum / num);
-					encodedColor.push_back(luma - avgColor.x);
+					int luma = lroundf((float)sum / num) - avgColor.x;
+					// 量化
+					luma = (luma & (-1 << quantizationBits)) + ((luma << 1) & (1 << quantizationBits));
+					encodedColor.push_back(luma);
 
 					// 不进行色度采样时，与明度一同获取色度
 					if (!isChromaSubsampling) {
@@ -251,10 +253,12 @@ void Slice::encode() {
 							sum1 += points[index].color.y;
 							sum2 += points[index].color.z;
 						}
-						int chroma1 = lroundf((float)sum1 / num);
-						int chroma2 = lroundf((float)sum2 / num);
-						encodedColor.push_back(chroma1 - avgColor.y);
-						encodedColor.push_back(chroma2 - avgColor.z);
+						int chroma1 = lroundf((float)sum1 / num) - avgColor.y;
+						int chroma2 = lroundf((float)sum2 / num) - avgColor.z;
+						chroma1 = (chroma1 & (-1 << quantizationBits)) + ((chroma1 << 1) & (1 << quantizationBits));
+						chroma2 = (chroma2 & (-1 << quantizationBits)) + ((chroma2 << 1) & (1 << quantizationBits));
+						encodedColor.push_back(chroma1);
+						encodedColor.push_back(chroma2);
 					}
 				}
 			}
@@ -271,10 +275,12 @@ void Slice::encode() {
 				sum1 += points[index].color.y;
 				sum2 += points[index].color.z;
 			}
-			int chroma1 = lroundf((float)sum1 / num);
-			int chroma2 = lroundf((float)sum2 / num);
-			encodedColor.push_back(chroma1 - avgColor.y);
-			encodedColor.push_back(chroma2 - avgColor.z);
+			int chroma1 = lroundf((float)sum1 / num) - avgColor.y;
+			int chroma2 = lroundf((float)sum2 / num) - avgColor.z;
+			chroma1 = (chroma1 & (-1 << quantizationBits)) + ((chroma1 << 1) & (1 << quantizationBits));
+			chroma2 = (chroma2 & (-1 << quantizationBits)) + ((chroma2 << 1) & (1 << quantizationBits));
+			encodedColor.push_back(chroma1);
+			encodedColor.push_back(chroma2);
 		}
 
 		q.pop();

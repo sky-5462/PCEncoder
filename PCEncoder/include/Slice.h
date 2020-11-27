@@ -39,7 +39,7 @@ public:
 
 	static std::vector<Slice> split(const Slice& slice);
 
-	void encode();
+	void encode(int quantizationBits);
 	std::vector<Point> decode();
 
 	std::string serialize() const;
