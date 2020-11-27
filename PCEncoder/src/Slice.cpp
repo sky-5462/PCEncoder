@@ -95,20 +95,17 @@ void Slice::encode() {
 	if (points.empty())
 		return;
 
-	EncodeTreeNode headNode;
-	headNode.origin = origin;
-	headNode.edgeLength = edgeLength;
-	headNode.sliceDataIndex.resize(points.size());
+	std::vector<int> sliceDataIndex(points.size());
 	for (int i = 0; i < points.size(); ++i) {
-		headNode.sliceDataIndex[i] = i;
+		sliceDataIndex[i] = i;
 	}
 
 	// 削除单枝根节点
 	while (true) {
 		std::array<int, 8> count = { 0 };
-		auto halfLength = headNode.edgeLength / 2;
-		auto center = headNode.origin + halfLength;
-		for (int index : headNode.sliceDataIndex) {
+		auto halfLength = edgeLength / 2;
+		auto center = origin + halfLength;
+		for (int index : sliceDataIndex) {
 			Vec3i32 diff = points[index].position - center;
 			int subIndex;
 			if (diff.x < 0) {
@@ -150,21 +147,27 @@ void Slice::encode() {
 			}
 		}
 		if (validCount == 1) {
-			headNode.origin = Vec3i32((index & 4 ? center.x : headNode.origin.x),
-									  (index & 2 ? center.y : headNode.origin.y),
-									  (index & 1 ? center.z : headNode.origin.z));
-			headNode.edgeLength = halfLength;
+			origin = Vec3i32((index & 4 ? center.x : origin.x),
+							 (index & 2 ? center.y : origin.y),
+							 (index & 1 ? center.z : origin.z));
+			edgeLength = halfLength;
 		}
 		else
 			break;
 	}
 
-	headNode.level = _tzcnt_u32(headNode.edgeLength) - clipDepth;  // 往下深入时level递减，归零时强制停止
+	int firstLevel = _tzcnt_u32(edgeLength) - clipDepth;  // 往下深入时level递减，归零时强制停止
 	// 这一个分片在开头就被剪掉了
-	if (headNode.level < 0) {
+	if (firstLevel < 0) {
 		points.clear();
 		return;
 	}
+
+	EncodeTreeNode headNode;
+	headNode.origin = origin;
+	headNode.edgeLength = edgeLength;
+	headNode.sliceDataIndex = sliceDataIndex;
+	headNode.level = firstLevel;
 
 	// 使用颜色预测编码
 	Vec3i32 sum = Vec3i32::zero();
@@ -238,7 +241,7 @@ void Slice::encode() {
 						sum += points[index].color.x;
 					}
 					int luma = lroundf((float)sum / num);
-					encodedColor.push_back(avgColor.x - luma);
+					encodedColor.push_back(luma - avgColor.x);
 
 					// 不进行色度采样时，与明度一同获取色度
 					if (!isChromaSubsampling) {
@@ -250,8 +253,8 @@ void Slice::encode() {
 						}
 						int chroma1 = lroundf((float)sum1 / num);
 						int chroma2 = lroundf((float)sum2 / num);
-						encodedColor.push_back(avgColor.y - chroma1);
-						encodedColor.push_back(avgColor.z - chroma2);
+						encodedColor.push_back(chroma1 - avgColor.y);
+						encodedColor.push_back(chroma2 - avgColor.z);
 					}
 				}
 			}
@@ -270,8 +273,8 @@ void Slice::encode() {
 			}
 			int chroma1 = lroundf((float)sum1 / num);
 			int chroma2 = lroundf((float)sum2 / num);
-			encodedColor.push_back(avgColor.y - chroma1);
-			encodedColor.push_back(avgColor.z - chroma2);
+			encodedColor.push_back(chroma1 - avgColor.y);
+			encodedColor.push_back(chroma2 - avgColor.z);
 		}
 
 		q.pop();
