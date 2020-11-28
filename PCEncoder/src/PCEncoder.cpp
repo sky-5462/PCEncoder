@@ -14,6 +14,7 @@ public:
 	int sliceMaxEdgeLength;   // 必须是2的整次幂（默认64）
 	int clipDepth;            // 从底剪除的层数
 	bool isChromasubsampling;
+	int quantizationBits;     // 量化位数（暂时使用看位宽的暴力量化）
 	IOParameters ioParameters;
 
 	// 默认设置
@@ -21,7 +22,8 @@ public:
 		sliceMaxEdgeLength(64),
 		clipDepth(0),
 		ioParameters(),
-		isChromasubsampling(true) {
+		isChromasubsampling(true),
+		quantizationBits(0) {
 	}
 
 	void encode() {
@@ -53,11 +55,17 @@ public:
 		buffer.clear();
 
 		// 这里可以插入分片分裂以及质量控制相关的操作
+		std::vector<Slice> splitedSlices;
+		for (const auto& slice : slices) {
+			auto splited = Slice::split(slice);
+			splitedSlices.insert(splitedSlices.end(), splited.begin(), splited.end());
+		}
+		slices = splitedSlices;
 
 		// 压缩分片
 		for (auto& slice : slices) {
 			if (!slice.empty()) {
-				slice.encode();
+				slice.encode(quantizationBits);
 			}
 		}
 
@@ -116,7 +124,8 @@ int main() {
 	encoder.pathIn = "ricardo9_frame0017.ply";
 	encoder.pathOut = "test.bin";
 	encoder.isChromasubsampling = true;
-	encoder.ioParameters.entropyType = EntropyEncodeType::ZLIB;
+	encoder.ioParameters.entropyType = EntropyEncodeType::HUFFMAN;
+	encoder.quantizationBits = 3;
 	encoder.encode();
 	encoder.pathIn = "test.bin";
 	encoder.pathOut = "decode.ply";

@@ -2,24 +2,179 @@
 #include <queue>
 #include <array>
 
-void Slice::encode() {
+
+
+std::vector<Slice> Slice::split(const Slice& slice) {
+	std::vector<Slice> result = { slice };
+	if (slice.points.empty())
+		return result;
+
+	// 这里先实现个简单的算法，检测int8范围内能否表示颜色三通道的差值，若不能就对半分
+	// 第一通道
+	int size = result.size();
+	for (int i = 0; i < size; ++i) {
+		auto& slice = result[i];
+		int min = INT_MAX, max = 0;
+		for (const auto& p : slice.points) {
+			if (p.color.x < min)
+				min = p.color.x;
+			if (p.color.x > max)
+				max = p.color.x;
+		}
+		// 这里就用120当边界吧，也差不多
+		if (max - min > 120) {
+			int mid = (max + min) / 2;
+			std::vector<Point> pointSet1, pointSet2;
+			for (const auto& p : slice.points) {
+				if (p.color.x < mid)
+					pointSet1.push_back(p);
+				else
+					pointSet2.push_back(p);
+			}
+			slice.points = pointSet1;
+			result.emplace_back(slice.origin, slice.edgeLength, slice.clipDepth, slice.isChromaSubsampling, pointSet2);
+		}
+	}
+
+	// 第二通道
+	size = result.size();
+	for (int i = 0; i < size; ++i) {
+		auto& slice = result[i];
+		int min = INT_MAX, max = 0;
+		for (const auto& p : slice.points) {
+			if (p.color.y < min)
+				min = p.color.y;
+			if (p.color.y > max)
+				max = p.color.y;
+		}
+		// 这里就用120当边界吧，也差不多
+		if (max - min > 120) {
+			int mid = (max + min) / 2;
+			std::vector<Point> pointSet1, pointSet2;
+			for (const auto& p : slice.points) {
+				if (p.color.x < mid)
+					pointSet1.push_back(p);
+				else
+					pointSet2.push_back(p);
+			}
+			slice.points = pointSet1;
+			result.emplace_back(slice.origin, slice.edgeLength, slice.clipDepth, slice.isChromaSubsampling, pointSet2);
+		}
+	}
+
+	// 第三通道
+	size = result.size();
+	for (int i = 0; i < size; ++i) {
+		auto& slice = result[i];
+		int min = INT_MAX, max = 0;
+		for (const auto& p : slice.points) {
+			if (p.color.z < min)
+				min = p.color.z;
+			if (p.color.z > max)
+				max = p.color.z;
+		}
+		// 这里就用120当边界吧，也差不多
+		if (max - min > 120) {
+			int mid = (max + min) / 2;
+			std::vector<Point> pointSet1, pointSet2;
+			for (const auto& p : slice.points) {
+				if (p.color.x < mid)
+					pointSet1.push_back(p);
+				else
+					pointSet2.push_back(p);
+			}
+			slice.points = pointSet1;
+			result.emplace_back(slice.origin, slice.edgeLength, slice.clipDepth, slice.isChromaSubsampling, pointSet2);
+		}
+	}
+
+	return result;
+}
+
+void Slice::encode(int quantizationBits) {
 	if (points.empty())
 		return;
 
-	EncodeTreeNode headNode;
-	headNode.origin = origin;
-	headNode.edgeLength = edgeLength;
-	headNode.level = _tzcnt_u32(edgeLength) - clipDepth;  // 往下深入时level递减，归零时强制停止
+	std::vector<int> sliceDataIndex(points.size());
+	for (int i = 0; i < points.size(); ++i) {
+		sliceDataIndex[i] = i;
+	}
+
+	// 削除单枝根节点
+	while (true) {
+		std::array<int, 8> count = { 0 };
+		auto halfLength = edgeLength / 2;
+		auto center = origin + halfLength;
+		for (int index : sliceDataIndex) {
+			Vec3i32 diff = points[index].position - center;
+			int subIndex;
+			if (diff.x < 0) {
+				if (diff.y < 0) {
+					if (diff.z < 0)
+						subIndex = 0;
+					else
+						subIndex = 1;
+				}
+				else {
+					if (diff.z < 0)
+						subIndex = 2;
+					else
+						subIndex = 3;
+				}
+			}
+			else {
+				if (diff.y < 0) {
+					if (diff.z < 0)
+						subIndex = 4;
+					else
+						subIndex = 5;
+				}
+				else {
+					if (diff.z < 0)
+						subIndex = 6;
+					else
+						subIndex = 7;
+				}
+			}
+			count[subIndex]++;
+		}
+		int validCount = 0;
+		int index = -1;
+		for (int i = 0; i < 8; ++i) {
+			if (count[i] != 0) {
+				validCount++;
+				index = i;
+			}
+		}
+		if (validCount == 1) {
+			origin = Vec3i32((index & 4 ? center.x : origin.x),
+							 (index & 2 ? center.y : origin.y),
+							 (index & 1 ? center.z : origin.z));
+			edgeLength = halfLength;
+		}
+		else
+			break;
+	}
+
+	int firstLevel = _tzcnt_u32(edgeLength) - clipDepth;  // 往下深入时level递减，归零时强制停止
 	// 这一个分片在开头就被剪掉了
-	if (headNode.level < 0) {
+	if (firstLevel < 0) {
 		points.clear();
 		return;
 	}
 
-	headNode.sliceDataIndex.resize(points.size());
-	for (int i = 0; i < points.size(); ++i) {
-		headNode.sliceDataIndex[i] = i;
+	EncodeTreeNode headNode;
+	headNode.origin = origin;
+	headNode.edgeLength = edgeLength;
+	headNode.sliceDataIndex = sliceDataIndex;
+	headNode.level = firstLevel;
+
+	// 使用颜色预测编码
+	Vec3i32 sum = Vec3i32::zero();
+	for (const auto& p : points) {
+		sum += p.color;
 	}
+	avgColor = sum / points.size();
 
 	std::queue<EncodeTreeNode> q;
 	q.push(headNode);
@@ -85,7 +240,10 @@ void Slice::encode() {
 					for (int index : subSlicesDataIndex[i]) {
 						sum += points[index].color.x;
 					}
-					encodedColor.push_back(lroundf((float)sum / num));
+					int luma = lroundf((float)sum / num) - avgColor.x;
+					// 量化
+					luma = (luma & (-1 << quantizationBits)) + ((luma << 1) & (1 << quantizationBits));
+					encodedColor.push_back(luma);
 
 					// 不进行色度采样时，与明度一同获取色度
 					if (!isChromaSubsampling) {
@@ -95,8 +253,12 @@ void Slice::encode() {
 							sum1 += points[index].color.y;
 							sum2 += points[index].color.z;
 						}
-						encodedColor.push_back(lroundf((float)sum1 / num));
-						encodedColor.push_back(lroundf((float)sum2 / num));
+						int chroma1 = lroundf((float)sum1 / num) - avgColor.y;
+						int chroma2 = lroundf((float)sum2 / num) - avgColor.z;
+						chroma1 = (chroma1 & (-1 << quantizationBits)) + ((chroma1 << 1) & (1 << quantizationBits));
+						chroma2 = (chroma2 & (-1 << quantizationBits)) + ((chroma2 << 1) & (1 << quantizationBits));
+						encodedColor.push_back(chroma1);
+						encodedColor.push_back(chroma2);
 					}
 				}
 			}
@@ -113,8 +275,12 @@ void Slice::encode() {
 				sum1 += points[index].color.y;
 				sum2 += points[index].color.z;
 			}
-			encodedColor.push_back(lroundf((float)sum1 / num));
-			encodedColor.push_back(lroundf((float)sum2 / num));
+			int chroma1 = lroundf((float)sum1 / num) - avgColor.y;
+			int chroma2 = lroundf((float)sum2 / num) - avgColor.z;
+			chroma1 = (chroma1 & (-1 << quantizationBits)) + ((chroma1 << 1) & (1 << quantizationBits));
+			chroma2 = (chroma2 & (-1 << quantizationBits)) + ((chroma2 << 1) & (1 << quantizationBits));
+			encodedColor.push_back(chroma1);
+			encodedColor.push_back(chroma2);
 		}
 
 		q.pop();
@@ -144,13 +310,13 @@ std::vector<Point> Slice::decode() {
 												 (i & 1 ? center.z : node.origin.z));
 
 					// 深度受限时应该在整个节点对应的块上显示而不是缩成一个点...
-					uint8_t luma = encodedColor[colorIndex];
+					uint8_t luma = encodedColor[colorIndex] + avgColor.x;
 					colorIndex++;
 					uint8_t chroma1 = 0;
 					uint8_t chroma2 = 0;
 					if (!isChromaSubsampling) {
-						chroma1 = encodedColor[colorIndex];
-						chroma2 = encodedColor[colorIndex + 1];
+						chroma1 = encodedColor[colorIndex] + avgColor.y;
+						chroma2 = encodedColor[colorIndex + 1] + avgColor.z;
 						colorIndex += 2;
 					}
 					for (int x = 0; x < halfLength; ++x) {
@@ -165,8 +331,8 @@ std::vector<Point> Slice::decode() {
 			}
 
 			if (isChromaSubsampling) {
-				uint8_t chroma1 = encodedColor[colorIndex];
-				uint8_t chroma2 = encodedColor[colorIndex + 1];
+				uint8_t chroma1 = encodedColor[colorIndex] + avgColor.y;
+				uint8_t chroma2 = encodedColor[colorIndex + 1] + avgColor.z;
 				colorIndex += 2;
 				for (auto& p : buffer) {
 					p.color.y = chroma1;
@@ -210,6 +376,7 @@ std::string Slice::serialize() const {
 	result += tzNum;
 	result += clipDepth;
 	result += isChromaSubsampling;
+	result.insert(result.size(), (char*)&avgColor, 3);
 	result.insert(result.size(), (char*)encodedTree.data(), treeNum);
 	result.insert(result.size(), (char*)encodedColor.data(), colorsNum);
 	return result;
@@ -229,8 +396,11 @@ Slice Slice::parse(std::string_view view) {
 	int clipDepth = view[index + 1];
 	bool isChromaSubsampling = view[index + 2];
 	index += 3;
+	Vec3u8 avgColor;
+	memcpy(&avgColor, &view[index], 3);
+	index += 3;
 
-	Slice slice(origin, 1 << tzNum, clipDepth, isChromaSubsampling);
+	Slice slice(origin, 1 << tzNum, clipDepth, isChromaSubsampling, avgColor);
 	slice.encodedTree.resize(treeNum);
 	slice.encodedColor.resize(colorsNum);
 	memcpy(slice.encodedTree.data(), &view[index], treeNum);
