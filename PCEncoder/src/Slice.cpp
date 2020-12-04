@@ -2,7 +2,14 @@
 #include <queue>
 #include <array>
 
-
+static int clipCalibration(int val) {
+	if (val > 255)
+		return 255 - val;
+	else if (val < 0)
+		return 0 - val;
+	else
+		return 0;
+}
 
 std::vector<Slice> Slice::split(const Slice& slice) {
 	std::vector<Slice> result = { slice };
@@ -243,7 +250,9 @@ void Slice::encode(int quantizationBits) {
 					int luma = lroundf((float)sum / num) - avgColor.x;
 					// 量化
 					luma = (luma & (-1 << quantizationBits)) + ((luma << 1) & (1 << quantizationBits));
-					encodedColor.push_back(luma);
+					// 反量化，修正溢出
+					int calibration = clipCalibration(luma + avgColor.x);
+					encodedColor.push_back(luma + calibration);
 
 					// 不进行色度采样时，与明度一同获取色度
 					if (!isChromaSubsampling) {
@@ -257,8 +266,10 @@ void Slice::encode(int quantizationBits) {
 						int chroma2 = lroundf((float)sum2 / num) - avgColor.z;
 						chroma1 = (chroma1 & (-1 << quantizationBits)) + ((chroma1 << 1) & (1 << quantizationBits));
 						chroma2 = (chroma2 & (-1 << quantizationBits)) + ((chroma2 << 1) & (1 << quantizationBits));
-						encodedColor.push_back(chroma1);
-						encodedColor.push_back(chroma2);
+						int calibration1 = clipCalibration(chroma1 + avgColor.y);
+						int calibration2 = clipCalibration(chroma2 + avgColor.z);
+						encodedColor.push_back(chroma1 + calibration1);
+						encodedColor.push_back(chroma2 + calibration2);
 					}
 				}
 			}
@@ -279,8 +290,10 @@ void Slice::encode(int quantizationBits) {
 			int chroma2 = lroundf((float)sum2 / num) - avgColor.z;
 			chroma1 = (chroma1 & (-1 << quantizationBits)) + ((chroma1 << 1) & (1 << quantizationBits));
 			chroma2 = (chroma2 & (-1 << quantizationBits)) + ((chroma2 << 1) & (1 << quantizationBits));
-			encodedColor.push_back(chroma1);
-			encodedColor.push_back(chroma2);
+			int calibration1 = clipCalibration(chroma1 + avgColor.y);
+			int calibration2 = clipCalibration(chroma2 + avgColor.z);
+			encodedColor.push_back(chroma1 + calibration1);
+			encodedColor.push_back(chroma2 + calibration2);
 		}
 
 		q.pop();
