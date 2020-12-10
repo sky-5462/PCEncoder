@@ -11,6 +11,7 @@ static int clipCalibration(int val) {
 		return 0;
 }
 
+// 这个split过于简单粗暴了
 std::vector<Slice> Slice::split(const Slice& slice) {
 	std::vector<Slice> result = { slice };
 	if (slice.points.empty())
@@ -39,7 +40,11 @@ std::vector<Slice> Slice::split(const Slice& slice) {
 					pointSet2.push_back(p);
 			}
 			slice.points = pointSet1;
-			result.emplace_back(slice.origin, slice.edgeLength, slice.clipDepth, slice.isChromaSubsampling, pointSet2);
+
+			Slice slice2(slice.origin, slice.edgeLength, slice.clipDepth);
+			slice2.isChromaSubsampling = slice.isChromaSubsampling;
+			slice2.points = pointSet2;
+			result.push_back(slice2);
 		}
 	}
 
@@ -65,7 +70,11 @@ std::vector<Slice> Slice::split(const Slice& slice) {
 					pointSet2.push_back(p);
 			}
 			slice.points = pointSet1;
-			result.emplace_back(slice.origin, slice.edgeLength, slice.clipDepth, slice.isChromaSubsampling, pointSet2);
+
+			Slice slice2(slice.origin, slice.edgeLength, slice.clipDepth);
+			slice2.isChromaSubsampling = slice.isChromaSubsampling;
+			slice2.points = pointSet2;
+			result.push_back(slice2);
 		}
 	}
 
@@ -91,7 +100,11 @@ std::vector<Slice> Slice::split(const Slice& slice) {
 					pointSet2.push_back(p);
 			}
 			slice.points = pointSet1;
-			result.emplace_back(slice.origin, slice.edgeLength, slice.clipDepth, slice.isChromaSubsampling, pointSet2);
+
+			Slice slice2(slice.origin, slice.edgeLength, slice.clipDepth);
+			slice2.isChromaSubsampling = slice.isChromaSubsampling;
+			slice2.points = pointSet2;
+			result.push_back(slice2);
 		}
 	}
 
@@ -298,9 +311,68 @@ void Slice::encode(int quantizationBits) {
 
 		q.pop();
 	} while (!q.empty());
+
+
+	entropyTree.assign(encodedTree.cbegin(), encodedTree.cend());
+	entropyColor.assign(encodedColor.cbegin(), encodedColor.cend());
+
+	if (treeEntropyType == EntropyEncodeType::HUFFMAN) {
+		entropyTree = huffman_encode_string(entropyTree);
+	}
+	else if (treeEntropyType == EntropyEncodeType::RLE) {
+		entropyTree = runLengthEncode(entropyTree);
+	}
+	else if (treeEntropyType == EntropyEncodeType::RLE_HUFFMAN) {
+		entropyTree = huffman_encode_string(runLengthEncode(entropyTree));
+	}
+	else if (treeEntropyType == EntropyEncodeType::ZLIB) {
+		entropyTree = zlib_encode_string(entropyTree);
+	}
+
+	if (colorEntropyType == EntropyEncodeType::HUFFMAN) {
+		entropyColor = huffman_encode_string(entropyColor);
+	}
+	else if (colorEntropyType == EntropyEncodeType::RLE) {
+		entropyColor = runLengthEncode(entropyColor);
+	}
+	else if (colorEntropyType == EntropyEncodeType::RLE_HUFFMAN) {
+		entropyColor = huffman_encode_string(runLengthEncode(entropyColor));
+	}
+	else if (colorEntropyType == EntropyEncodeType::ZLIB) {
+		entropyColor = zlib_encode_string(entropyColor);
+	}
 }
 
 std::vector<Point> Slice::decode() {
+	if (treeEntropyType == EntropyEncodeType::HUFFMAN) {
+		entropyTree = huffman_decode_string(entropyTree);
+	}
+	else if (treeEntropyType == EntropyEncodeType::RLE) {
+		entropyTree = runLengthDecode(entropyTree);
+	}
+	else if (treeEntropyType == EntropyEncodeType::RLE_HUFFMAN) {
+		entropyTree = runLengthDecode(huffman_decode_string(entropyTree));
+	}
+	else if (treeEntropyType == EntropyEncodeType::ZLIB) {
+		entropyTree = zlib_decode_string(entropyTree);
+	}
+
+	if (colorEntropyType == EntropyEncodeType::HUFFMAN) {
+		entropyColor = huffman_decode_string(entropyColor);
+	}
+	else if (colorEntropyType == EntropyEncodeType::RLE) {
+		entropyColor = runLengthDecode(entropyColor);
+	}
+	else if (colorEntropyType == EntropyEncodeType::RLE_HUFFMAN) {
+		entropyColor = runLengthDecode(huffman_decode_string(entropyColor));
+	}
+	else if (colorEntropyType == EntropyEncodeType::ZLIB) {
+		entropyColor = zlib_decode_string(entropyColor);
+	}
+
+	encodedTree.assign(entropyTree.cbegin(), entropyTree.cend());
+	encodedColor.assign(entropyColor.cbegin(), entropyColor.cend());
+
 	int level = _tzcnt_u32(edgeLength) - clipDepth;
 	std::queue<DecodeTreeNode> q;
 	q.push({ origin, edgeLength, level });
@@ -381,17 +453,19 @@ std::vector<Point> Slice::decode() {
 std::string Slice::serialize() const {
 	std::string result;
 	uint8_t tzNum = _tzcnt_u32(edgeLength);  // 保存边长对应的(1<<N)移位量，可以用8bit存下
-	int treeNum = encodedTree.size();
-	int colorsNum = encodedColor.size();
+	int treeNum = entropyTree.size();
+	int colorsNum = entropyColor.size();
 	result.insert(result.size(), (char*)&origin, 12);
 	result.insert(result.size(), (char*)&treeNum, 4);
 	result.insert(result.size(), (char*)&colorsNum, 4);
 	result += tzNum;
 	result += clipDepth;
 	result += isChromaSubsampling;
+	result += (char)treeEntropyType;
+	result += (char)colorEntropyType;
 	result.insert(result.size(), (char*)&avgColor, 3);
-	result.insert(result.size(), (char*)encodedTree.data(), treeNum);
-	result.insert(result.size(), (char*)encodedColor.data(), colorsNum);
+	result.insert(result.size(), (char*)entropyTree.data(), treeNum);
+	result.insert(result.size(), (char*)entropyColor.data(), colorsNum);
 	return result;
 }
 
@@ -408,17 +482,23 @@ Slice Slice::parse(std::string_view view) {
 	uint8_t tzNum = view[index];
 	int clipDepth = view[index + 1];
 	bool isChromaSubsampling = view[index + 2];
-	index += 3;
+	EntropyEncodeType treeEntropyType = (EntropyEncodeType)view[index + 3];
+	EntropyEncodeType colorEntropyType = (EntropyEncodeType)view[index + 4];
+	index += 5;
 	Vec3u8 avgColor;
 	memcpy(&avgColor, &view[index], 3);
 	index += 3;
 
-	Slice slice(origin, 1 << tzNum, clipDepth, isChromaSubsampling, avgColor);
-	slice.encodedTree.resize(treeNum);
-	slice.encodedColor.resize(colorsNum);
-	memcpy(slice.encodedTree.data(), &view[index], treeNum);
+	Slice slice(origin, 1 << tzNum, clipDepth);
+	slice.isChromaSubsampling = isChromaSubsampling;
+	slice.avgColor = avgColor;
+	slice.treeEntropyType = treeEntropyType;
+	slice.colorEntropyType = colorEntropyType;
+	slice.entropyTree.resize(treeNum);
+	slice.entropyColor.resize(colorsNum);
+	memcpy(slice.entropyTree.data(), &view[index], treeNum);
 	index += treeNum;
-	memcpy(slice.encodedColor.data(), &view[index], colorsNum);
+	memcpy(slice.entropyColor.data(), &view[index], colorsNum);
 
 	return slice;
 }

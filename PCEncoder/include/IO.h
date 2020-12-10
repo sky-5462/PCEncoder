@@ -1,10 +1,5 @@
 #pragma once
-#pragma comment(lib, ".\\lib\\zlibstat.lib") 
-#include <zlib.h>
 #include <common.h>
-#include <huffman.h>
-#include <zlibfunc.h>
-#include <RLE.h>
 #include <fstream>
 #include <string>
 
@@ -17,25 +12,15 @@ enum class ColorSpace {
 	YUV
 };
 
-enum class EntropyEncodeType {
-	NONE,
-	RLE,
-	HUFFMAN,
-	RLE_HUFFMAN,
-	ZLIB
-};
-
 struct IOParameters {
 	TextFormat textFormat;
 	ColorSpace cspExternal;
 	ColorSpace cspInternal;
-	EntropyEncodeType entropyType;
 
 	IOParameters() :
 		textFormat(TextFormat::PLY),
 		cspExternal(ColorSpace::RGB),
-		cspInternal(ColorSpace::YUV),
-		entropyType(EntropyEncodeType::HUFFMAN) {
+		cspInternal(ColorSpace::YUV) {
 	}
 };
 
@@ -44,8 +29,7 @@ public:
 	IO(const IOParameters& para) :
 		textFormat(para.textFormat),
 		cspExternal(para.cspExternal),
-		cspInternal(para.cspInternal),
-		entropyType(para.entropyType) {
+		cspInternal(para.cspInternal) {
 	}
 
 	PointBuffer readText(const std::string& path) const;
@@ -58,5 +42,4 @@ private:
 	TextFormat textFormat;
 	ColorSpace cspExternal;
 	ColorSpace cspInternal;
-	EntropyEncodeType entropyType;
 };
