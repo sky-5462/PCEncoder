@@ -145,7 +145,7 @@ int main() {
 	PCEncoder encoder;
 	encoder.pathIn = "ricardo9_frame0017.ply";
 	encoder.pathOut = "test.bin";
-	encoder.isChromasubsampling = false;
+	encoder.isChromasubsampling = true;
 	encoder.treeEntropyType = EntropyEncodeType::HUFFMAN;
 	encoder.colorEntropyType = EntropyEncodeType::HUFFMAN;
 	encoder.quantizationBits = 0;

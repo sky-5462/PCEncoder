@@ -212,7 +212,7 @@ void Slice::Octree_Compute_Attribute_Diff() {
 	do {
 		const auto& node_octree = q_octree.front();
 
-		if (node_octree->level > 0) {
+		if (node_octree->level > 1) {
 			for (int i = 0; i < 8; ++i) {
 				if (node_octree->sub_node[i] != NULL)
 					q_octree.push(node_octree->sub_node[i]);
@@ -220,12 +220,22 @@ void Slice::Octree_Compute_Attribute_Diff() {
 		}
 		else {
 			// 计算差分，量化，赋值
-			int diff_x = node_octree->color->x - avgColor.x;
-			int diff_y = node_octree->color->y - avgColor.y;
-			int diff_z = node_octree->color->z - avgColor.z;
-			node_octree->color->x = diff_Quantizer(diff_x, avgColor.x, quantizationBits);
-			node_octree->color->y = diff_Quantizer(diff_y, avgColor.y, quantizationBits);
-			node_octree->color->z = diff_Quantizer(diff_z, avgColor.z, quantizationBits);
+			for (int i = 0; i < 8; ++i) {
+				if (node_octree->sub_node[i] != NULL) {
+					int diff_x = node_octree->sub_node[i]->color->x - avgColor.x;
+					int diff_y = node_octree->sub_node[i]->color->y - avgColor.y;
+					int diff_z = node_octree->sub_node[i]->color->z - avgColor.z;
+					node_octree->sub_node[i]->color->x = diff_Quantizer(diff_x, avgColor.x, quantizationBits);
+					node_octree->sub_node[i]->color->y = diff_Quantizer(diff_y, avgColor.y, quantizationBits);
+					node_octree->sub_node[i]->color->z = diff_Quantizer(diff_z, avgColor.z, quantizationBits);
+				}
+			}
+			if (isChromaSubsampling) {
+				int diff_y = node_octree->color->y - avgColor.y;
+				int diff_z = node_octree->color->z - avgColor.z;
+				node_octree->color->y = diff_Quantizer(diff_y, avgColor.y, quantizationBits);
+				node_octree->color->z = diff_Quantizer(diff_z, avgColor.z, quantizationBits);
+			}
 		}
 
 		q_octree.pop();
@@ -245,10 +255,10 @@ void Slice::Octree_Chroma_Subsample() {
 			}
 		}
 		else {
-			q_octree.front()->color = new Vec3u8(0, 0, 0);
+			node_octree->color = new Vec3u8(0, 0, 0);
 			// 统计色度chroma
 			int sum1 = 0, sum2 = 0;
-			int num = node_octree->sliceDataIndex.size();
+			int num = 0;
 			for (int i = 0; i < 8; ++i) {
 				if (node_octree->sub_node[i] != NULL) {
 					num++;
@@ -291,25 +301,22 @@ void Slice::Octree_encode() {
 		}
 		encodedTree.push_back(controlByte);
 
-		if (isChromaSubsampling) {
-			if (node_octree->level == 1) {
+		if (node_octree->level == 1) {
+			if (isChromaSubsampling) {
 				for (int i = 0; i < 8; ++i) {
 					if (node_octree->sub_node[i] != NULL)
-					encodedColor.push_back(node_octree->sub_node[i]->color->x);
+						encodedColor.push_back(node_octree->sub_node[i]->color->x);
 				}
 				encodedColor.push_back(node_octree->color->y);
 				encodedColor.push_back(node_octree->color->z);
 			}
-		}
-		else {
-			if (node_octree->level == 1) {
+			else {
 				for (int i = 0; i < 8; ++i) {
 					if (node_octree->sub_node[i] != NULL) {
 						encodedColor.push_back(node_octree->sub_node[i]->color->x);
 						encodedColor.push_back(node_octree->sub_node[i]->color->y);
 						encodedColor.push_back(node_octree->sub_node[i]->color->z);
 					}
-						
 				}
 			}
 		}
