@@ -15,6 +15,8 @@ public:
 	int clipDepth;            // 从底剪除的层数
 	bool isChromasubsampling;
 	int quantizationBits;     // 量化位数（暂时使用看位宽的暴力量化）
+	EntropyEncodeType treeEntropyType;
+	EntropyEncodeType colorEntropyType;
 	IOParameters ioParameters;
 
 	// 默认设置
@@ -23,7 +25,9 @@ public:
 		clipDepth(0),
 		ioParameters(),
 		isChromasubsampling(true),
-		quantizationBits(0) {
+		quantizationBits(0),
+		treeEntropyType(EntropyEncodeType::NONE),
+		colorEntropyType(EntropyEncodeType::NONE) {
 	}
 
 	void encode() {
@@ -42,7 +46,10 @@ public:
 		for (int i = 0; i < sliceNum.x; ++i) {
 			for (int j = 0; j < sliceNum.y; ++j) {
 				for (int k = 0; k < sliceNum.z; ++k) {
-					slices.emplace_back(Vec3i32(i, j, k) * sliceMaxEdgeLength, sliceMaxEdgeLength, clipDepth, isChromasubsampling);
+					Slice slice(Vec3i32(i, j, k) * sliceMaxEdgeLength, sliceMaxEdgeLength, clipDepth);
+					slice.setChromaSubsampling(isChromasubsampling);
+					slice.setEntropyType(treeEntropyType, colorEntropyType);
+					slices.push_back(slice);
 				}
 			}
 		}
@@ -124,8 +131,9 @@ int main() {
 	encoder.pathIn = "ricardo9_frame0017.ply";
 	encoder.pathOut = "test.bin";
 	encoder.isChromasubsampling = true;
-	encoder.ioParameters.entropyType = EntropyEncodeType::HUFFMAN;
-	encoder.quantizationBits = 3;
+	encoder.treeEntropyType = EntropyEncodeType::HUFFMAN;
+	encoder.colorEntropyType = EntropyEncodeType::HUFFMAN;
+	encoder.quantizationBits = 0;
 	encoder.encode();
 	encoder.pathIn = "test.bin";
 	encoder.pathOut = "decode.ply";

@@ -3,7 +3,6 @@
 #include <tuple>
 
 
-
 // 8-bit transform
 static std::tuple<int, int, int> RGBToYUV(int r, int g, int b) {
 	// 变换矩阵随便找的一个，能用就行
@@ -41,7 +40,7 @@ PointBuffer IO::readText(const std::string& path) const {
 	*/
 	std::ifstream in(path);
 	if (!in.is_open())
-		throw logic_error("Invalid path to read text");
+		throw std::logic_error("Invalid path to read text");
 	int pointNum;
 	std::string skip;
 	in >> skip;  // ply
@@ -80,7 +79,7 @@ PointBuffer IO::readText(const std::string& path) const {
 void IO::writeText(const std::string& path, const PointBuffer& buffer) const {
 	std::ofstream out(path);
 	if (!out.is_open())
-		throw logic_error("Invalid path to write text");
+		throw std::logic_error("Invalid path to write text");
 
 	out << "ply\n";
 	out << "format ascii 1.0\n";
@@ -92,7 +91,7 @@ void IO::writeText(const std::string& path, const PointBuffer& buffer) const {
 	out << "property uchar green\n";
 	out << "property uchar blue\n";
 	out << "end_header\n";
-	
+
 	for (const auto& p : buffer) {
 		out << p.position.x << ' ' << p.position.y << ' ' << p.position.z << ' ';
 		auto [y, u, v] = Vec3i32(p.color);
@@ -113,7 +112,7 @@ void IO::writeText(const std::string& path, const PointBuffer& buffer) const {
 std::string IO::readBin(const std::string& path) const {
 	std::ifstream in(path, std::ios::binary | std::ios::ate);
 	if (!in.is_open())
-		throw logic_error("Invalid path to read binary");
+		throw std::logic_error("Invalid path to read binary");
 
 	int bytesNum = in.tellg();
 	in.seekg(0);
@@ -122,41 +121,13 @@ std::string IO::readBin(const std::string& path) const {
 	in.read(stream.data(), bytesNum);
 	in.close();
 
-	if (entropyType == EntropyEncodeType::HUFFMAN) {
-		stream = huffman_decode_string(stream);
-	}
-	else if (entropyType == EntropyEncodeType::RLE) {
-		stream = runLengthDecode(stream);
-	}
-	else if (entropyType == EntropyEncodeType::RLE_HUFFMAN) {
-		stream = runLengthDecode(huffman_decode_string(stream));
-	}
-	else if (entropyType == EntropyEncodeType::ZLIB) {
-		stream = zlib_decode_string(stream);
-	}
 	return stream;
 }
 
 void IO::writeBin(const std::string& path, const std::string& stream) const {
-	std::ofstream out(path, ios::binary);
+	std::ofstream out(path, std::ios::binary);
 	if (!out.is_open())
-		logic_error("Invalid path to write binary");
-	if (entropyType == EntropyEncodeType::HUFFMAN) {
-		auto encodedStream = huffman_encode_string(stream);
-		out.write(encodedStream.c_str(), encodedStream.size());
-	}
-	else if (entropyType == EntropyEncodeType::RLE) {
-		auto encodedStream = runLengthEncode(stream);
-		out.write(encodedStream.c_str(), encodedStream.size());
-	}
-	else if (entropyType == EntropyEncodeType::RLE_HUFFMAN) {
-		auto encodedStream = huffman_encode_string(runLengthEncode(stream));
-		out.write(encodedStream.c_str(), encodedStream.size());
-	}
-	else if (entropyType == EntropyEncodeType::ZLIB) {
-		auto encodedStream = zlib_encode_string(stream);
-		out.write(encodedStream.c_str(), encodedStream.size());
-	}
-	else
-		out.write(stream.c_str(), stream.size());
+		throw std::logic_error("Invalid path to write binary");
+
+	out.write(stream.c_str(), stream.size());
 }

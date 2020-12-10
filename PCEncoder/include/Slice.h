@@ -1,8 +1,21 @@
 #pragma once
+#pragma comment(lib, ".\\lib\\zlibstat.lib") 
+#include <zlib.h>
+#include <huffman.h>
+#include <zlibfunc.h>
+#include <RLE.h>
 
 #include <common.h>
 #include <string>
 #include <string_view>
+
+enum class EntropyEncodeType {
+	NONE,
+	RLE,
+	HUFFMAN,
+	RLE_HUFFMAN,
+	ZLIB
+};
 
 struct EncodeTreeNode {
 	Vec3i32 origin;
@@ -19,12 +32,15 @@ struct DecodeTreeNode {
 
 class Slice {
 public:
-	Slice(const Vec3i32& origin, int edgeLength, int clipDepth, bool isChromaSubsampling) : 
-		origin(origin), edgeLength(edgeLength), clipDepth(clipDepth), isChromaSubsampling(isChromaSubsampling) {}
-	Slice(const Vec3i32& origin, int edgeLength, int clipDepth, bool isChromaSubsampling, const Vec3u8& avgColor) : 
-		origin(origin), edgeLength(edgeLength), clipDepth(clipDepth), isChromaSubsampling(isChromaSubsampling), avgColor(avgColor) {}
-	Slice(const Vec3i32& origin, int edgeLength, int clipDepth, bool isChromaSubsampling, const std::vector<Point>& points) :
-		origin(origin), edgeLength(edgeLength), clipDepth(clipDepth), isChromaSubsampling(isChromaSubsampling), points(points) {}
+	Slice(const Vec3i32& origin, int edgeLength, int clipDepth) :
+		origin(origin),
+		edgeLength(edgeLength),
+		clipDepth(clipDepth),
+		isChromaSubsampling(false),
+		avgColor(Vec3u8::zero()),
+		treeEntropyType(EntropyEncodeType::NONE),
+		colorEntropyType(EntropyEncodeType::NONE) {
+	}
 
 	void addPoint(const Point& p) {
 		points.push_back(p);
@@ -32,10 +48,24 @@ public:
 	const std::vector<Point>& getPoints() const {
 		return points;
 	}
-
 	bool empty() const {
 		return points.empty();
 	}
+
+	void setChromaSubsampling(bool isChromaSubsampling) {
+		this->isChromaSubsampling = isChromaSubsampling;
+	}
+	void setAvgColor(const Vec3u8& avgColor) {
+		this->avgColor = avgColor;
+	}
+	void setPoints(const std::vector<Point>& points) {
+		this->points = points;
+	}
+	void setEntropyType(EntropyEncodeType treeEntropyType, EntropyEncodeType colorEntropyType) {
+		this->treeEntropyType = treeEntropyType;
+		this->colorEntropyType = colorEntropyType;
+	}
+
 
 	static std::vector<Slice> split(const Slice& slice);
 
@@ -54,4 +84,9 @@ private:
 	std::vector<Point> points;
 	std::vector<char> encodedTree;
 	std::vector<int8_t> encodedColor;
+
+	EntropyEncodeType treeEntropyType;
+	EntropyEncodeType colorEntropyType;
+	string entropyTree;
+	string entropyColor;
 };
