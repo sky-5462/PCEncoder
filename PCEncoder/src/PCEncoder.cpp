@@ -48,6 +48,7 @@ public:
 				for (int k = 0; k < sliceNum.z; ++k) {
 					Slice slice(Vec3i32(i, j, k) * sliceMaxEdgeLength, sliceMaxEdgeLength, clipDepth);
 					slice.setChromaSubsampling(isChromasubsampling);
+					slice.setquantizationBits(quantizationBits);
 					slice.setEntropyType(treeEntropyType, colorEntropyType);
 					slices.push_back(slice);
 				}
@@ -69,12 +70,26 @@ public:
 		}
 		slices = splitedSlices;
 
-		// 压缩分片
+		// 对分片建树
 		for (auto& slice : slices) {
 			if (!slice.empty()) {
-				slice.encode(quantizationBits);
+				slice.Construct_Octree_From_Slice();
+				if (isChromasubsampling) 
+					slice.Octree_Chroma_Subsample();
+				slice.Octree_Compute_Attribute_Diff();
+				// 压缩分片
+				slice.Octree_encode();
 			}
 		}
+
+		/*// 压缩分片
+		for (auto& slice : slices) {
+			if (!slice.empty()) {
+				slice.encode();
+			}
+		}*/
+		
+		
 
 		// 写入输出流
 		std::string byteStream;
