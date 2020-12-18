@@ -12,7 +12,6 @@ public:
 	std::string pathIn;
 	std::string pathOut;
 	int sliceMaxEdgeLength;   // 必须是2的整次幂（默认64）
-	int clipDepth;            // 从底剪除的层数
 	bool isChromasubsampling;
 	int quantizationBits;     // 量化位数（暂时使用看位宽的暴力量化）
 	EntropyEncodeType treeEntropyType;
@@ -22,7 +21,6 @@ public:
 	// 默认设置
 	PCEncoder() :
 		sliceMaxEdgeLength(64),
-		clipDepth(0),
 		ioParameters(),
 		isChromasubsampling(true),
 		quantizationBits(0),
@@ -46,11 +44,11 @@ public:
 		for (int i = 0; i < sliceNum.x; ++i) {
 			for (int j = 0; j < sliceNum.y; ++j) {
 				for (int k = 0; k < sliceNum.z; ++k) {
-					Slice slice(Vec3i32(i, j, k) * sliceMaxEdgeLength, sliceMaxEdgeLength, clipDepth);
+					Slice slice(Vec3i32(i, j, k) * sliceMaxEdgeLength, sliceMaxEdgeLength);
 					slice.setChromaSubsampling(isChromasubsampling);
 					slice.setquantizationBits(quantizationBits);
 					slice.setEntropyType(treeEntropyType, colorEntropyType);
-					slices.push_back(slice);
+					slices.push_back(std::move(slice));
 				}
 			}
 		}
@@ -62,14 +60,6 @@ public:
 		}
 		buffer.clear();
 
-		// 这里可以插入分片分裂以及质量控制相关的操作
-		std::vector<Slice> splitedSlices;
-		for (const auto& slice : slices) {
-			auto splited = Slice::split(slice);
-			splitedSlices.insert(splitedSlices.end(), splited.begin(), splited.end());
-		}
-		slices = splitedSlices;
-
 		// 对分片建树
 		for (auto& slice : slices) {
 			if (!slice.empty()) {
@@ -80,23 +70,14 @@ public:
 				// 压缩分片
 				slice.Octree_encode();
 			}
-		}
-
-		/*// 压缩分片
-		for (auto& slice : slices) {
-			if (!slice.empty()) {
-				slice.encode();
-			}
-		}*/
-		
-		
+		}		
 
 		// 写入输出流
 		std::string byteStream;
 		std::vector<int> lengthTable;    // 分片长度表，用于快速寻址分片
-		for (const auto& slice : slices) {
+		for (auto& slice : slices) {
 			if (!slice.empty()) {
-				const auto& temp = slice.serialize();
+				auto temp = slice.serialize();
 				lengthTable.push_back(temp.size());
 				byteStream += temp;
 			}

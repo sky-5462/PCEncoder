@@ -8,6 +8,8 @@
 #include <common.h>
 #include <string>
 #include <string_view>
+#include <memory>
+#include <array>
 
 enum class EntropyEncodeType {
 	NONE,
@@ -35,22 +37,19 @@ struct OctreeNode {
 	Vec3i32 origin;
 	int edgeLength;
 	int level;
+	Vec3u8 color;
 	std::vector<int> sliceDataIndex;
-	OctreeNode* sub_node[8] = { NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL };
-	Vec3u8* color = NULL;
+	std::array<std::unique_ptr<OctreeNode>, 8> sub_node;
 };
-
 
 class Slice {
 public:
-	Slice(const Vec3i32& origin, int edgeLength, int clipDepth) :
+	Slice(const Vec3i32& origin, int edgeLength) :
 		origin(origin),
 		edgeLength(edgeLength),
-		clipDepth(clipDepth),
 		isChromaSubsampling(false),
 		quantizationBits(0),
 		avgColor(Vec3u8::zero()),
-		octree_root(NULL),
 		treeEntropyType(EntropyEncodeType::NONE),
 		colorEntropyType(EntropyEncodeType::NONE) {
 	}
@@ -94,23 +93,21 @@ public:
 	// °Ë²æÊ÷Ñ¹Ëõ
 	void Octree_encode();
 
-	static std::vector<Slice> split(const Slice& slice);
-
-	void encode();
 	std::vector<Point> decode();
 
-	std::string serialize() const;
+	std::string serialize();
 	static Slice parse(std::string_view view);
+
+	void generateTransformBlocks();
 
 private:
 	Vec3i32 origin;
 	int edgeLength;
-	int clipDepth;
 	bool isChromaSubsampling;
 	int quantizationBits;
 	Vec3u8 avgColor;
 	std::vector<Point> points;
-	OctreeNode* octree_root;
+	std::unique_ptr<OctreeNode> octree_root;
 	std::vector<char> encodedTree;
 	std::vector<int8_t> encodedColor;
 
