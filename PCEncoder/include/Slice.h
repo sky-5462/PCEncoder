@@ -3,6 +3,7 @@
 #include <zlib.h>
 #include <huffman.h>
 #include <zlibfunc.h>
+#include <jpegfunc.h>
 #include <RLE.h>
 
 #include <common.h>
@@ -85,19 +86,34 @@ public:
 	// 构造八叉树并进行色度采样
 	void Construct_Octree_From_Slice();
 
+	// 从重建的八叉树获取点信息
+	void Get_Points_From_Octree();
+	void getPointsRecursion(const OctreeNode* node);
+
 	// 对八叉树的叶子节点计算属性（颜色）的差分 （含量化）
 	void Octree_Compute_Attribute_Diff();
 
 	// 八叉树压缩
 	void Octree_encode();
 
+	void Octree_encode_using_JPEG();
+
 	std::vector<Point> decode();
 
+	std::vector<Point> Octree_decode_using_JPEG();
+
 	std::string serialize();
+
+	std::string serialize_using_JPEG();
+
 	static Slice parse(std::string_view view);
 
+	static Slice parse_using_JPEG(std::string_view view);
+
 	// 用DFS遍历得到各个通道的原始颜色
-	std::array<std::vector<uint8_t>, 3> getRawColorWithDFS() const;
+	//std::array<std::vector<uint8_t>, 3> getRawColorWithDFS() const;
+
+	std::vector<uint8_t> getJpegInputImage(int &image_width, int &image_height) const;
 
 private:
 	Vec3i32 origin;
