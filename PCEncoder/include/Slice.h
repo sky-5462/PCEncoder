@@ -8,6 +8,8 @@
 #include <common.h>
 #include <string>
 #include <string_view>
+#include <memory>
+#include <array>
 
 enum class EntropyEncodeType {
 	NONE,
@@ -35,22 +37,20 @@ struct OctreeNode {
 	Vec3i32 origin;
 	int edgeLength;
 	int level;
+	Vec3u8 rawColor;
+	Vec3u8 predictedColor;
 	std::vector<int> sliceDataIndex;
-	OctreeNode* sub_node[8] = { NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL };
-	Vec3u8* color = NULL;
+	std::array<std::unique_ptr<OctreeNode>, 8> sub_node;
 };
-
 
 class Slice {
 public:
-	Slice(const Vec3i32& origin, int edgeLength, int clipDepth) :
+	Slice(const Vec3i32& origin, int edgeLength) :
 		origin(origin),
 		edgeLength(edgeLength),
-		clipDepth(clipDepth),
 		isChromaSubsampling(false),
 		quantizationBits(0),
 		avgColor(Vec3u8::zero()),
-		octree_root(NULL),
 		treeEntropyType(EntropyEncodeType::NONE),
 		colorEntropyType(EntropyEncodeType::NONE) {
 	}
@@ -82,40 +82,35 @@ public:
 		this->colorEntropyType = colorEntropyType;
 	}
 
-	// 构造八叉树
+	// 构造八叉树并进行色度采样
 	void Construct_Octree_From_Slice();
 
 	// 对八叉树的叶子节点计算属性（颜色）的差分 （含量化）
 	void Octree_Compute_Attribute_Diff();
 
-	// 对八叉树的叶子节点做色度抽样
-	void Octree_Chroma_Subsample();
-
 	// 八叉树压缩
 	void Octree_encode();
 
-	static std::vector<Slice> split(const Slice& slice);
-
-	void encode();
 	std::vector<Point> decode();
 
-	std::string serialize() const;
+	std::string serialize();
 	static Slice parse(std::string_view view);
+
+	// 用DFS遍历得到各个通道的原始颜色
+	std::array<std::vector<uint8_t>, 3> getRawColorWithDFS() const;
 
 private:
 	Vec3i32 origin;
 	int edgeLength;
-	int clipDepth;
 	bool isChromaSubsampling;
 	int quantizationBits;
 	Vec3u8 avgColor;
 	std::vector<Point> points;
-	OctreeNode* octree_root;
-	std::vector<char> encodedTree;
-	std::vector<int8_t> encodedColor;
+	std::unique_ptr<OctreeNode> octree_root;
+
+	std::vector<char> treeStream;
+	std::vector<int8_t> colorStream;
 
 	EntropyEncodeType treeEntropyType;
 	EntropyEncodeType colorEntropyType;
-	string entropyTree;
-	string entropyColor;
 };
