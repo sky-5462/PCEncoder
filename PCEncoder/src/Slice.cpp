@@ -570,7 +570,7 @@ void Slice::Octree_encode_using_JPEG() {
 	} while (!q_octree.empty());
 
 	// colorStream
-	int image_width = 0, image_height = 8;
+	int image_width = 8, image_height = 0;
 	std::vector<uint8_t> colorData = getJpegInputImage(image_width, image_height);
 	int quality = 100; // quality µÄ·¶Î§Îª 1 - 100
 	Jpeg_Encode_From_Mem(colorStream, quality, colorData, image_width, image_height);
