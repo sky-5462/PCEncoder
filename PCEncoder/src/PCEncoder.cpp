@@ -64,8 +64,6 @@ public:
 		for (auto& slice : slices) {
 			if (!slice.empty()) {
 				slice.Construct_Octree_From_Slice();
-				if (isChromasubsampling) 
-					slice.Octree_Chroma_Subsample();
 				slice.Octree_Compute_Attribute_Diff();
 				// 压缩分片
 				slice.Octree_encode();
@@ -126,7 +124,7 @@ int main() {
 	PCEncoder encoder;
 	encoder.pathIn = "ricardo9_frame0017.ply";
 	encoder.pathOut = "test.bin";
-	encoder.isChromasubsampling = true;
+	encoder.isChromasubsampling = false;
 	encoder.treeEntropyType = EntropyEncodeType::HUFFMAN;
 	encoder.colorEntropyType = EntropyEncodeType::HUFFMAN;
 	encoder.quantizationBits = 0;

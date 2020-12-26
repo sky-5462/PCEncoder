@@ -83,6 +83,12 @@ public:
 		y = (y > rhs.y ? y : rhs.y);
 		z = (z > rhs.z ? z : rhs.z);
 	}
+	Vec3 divideAndRound(T val) const {
+		double x = this->x / (double)val;
+		double y = this->y / (double)val;
+		double z = this->z / (double)val;
+		return Vec3(lround(x), lround(y), lround(z));
+	}
 
 	static Vec3 zero() {
 		return Vec3(0, 0, 0);
