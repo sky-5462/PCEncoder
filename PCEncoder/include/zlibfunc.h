@@ -1,7 +1,7 @@
 #ifndef ZLIBFUNC_H
 #define ZLIBFUNC_H
 
-#pragma comment(lib, ".\\lib\\zlibstat.lib") 
+//#pragma comment(lib, ".\\lib\\zlibstat.lib") 
 #include <zlib.h>
 #include <string>
 using namespace std;

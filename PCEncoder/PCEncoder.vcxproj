@@ -78,12 +78,14 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <LinkIncremental>true</LinkIncremental>
-    <IncludePath>$(ProjectDir)include;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)include;$(ProjectDir)include\libjpeg;$(ProjectDir)include\zlib;$(IncludePath)</IncludePath>
+    <LibraryPath>$(ProjectDir)lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <LinkIncremental>false</LinkIncremental>
-    <IncludePath>$(ProjectDir)include;$(IncludePath)</IncludePath>
+    <IncludePath>$(ProjectDir)include;$(ProjectDir)include\libjpeg;$(ProjectDir)include\zlib;$(IncludePath)</IncludePath>
     <OutDir>$(ProjectDir)\bin\</OutDir>
+    <LibraryPath>$(ProjectDir)lib;$(LibraryPath)</LibraryPath>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">
     <ClCompile>
@@ -125,6 +127,7 @@
       <SubSystem>Console</SubSystem>
       <GenerateDebugInformation>true</GenerateDebugInformation>
       <StackReserveSize>33445532</StackReserveSize>
+      <AdditionalDependencies>libjpeg.lib;zlibstat.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
@@ -141,11 +144,13 @@
       <EnableCOMDATFolding>true</EnableCOMDATFolding>
       <OptimizeReferences>true</OptimizeReferences>
       <GenerateDebugInformation>true</GenerateDebugInformation>
+      <AdditionalDependencies>libjpeg.lib;zlibstat.lib;%(AdditionalDependencies)</AdditionalDependencies>
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClCompile Include="src\huffman.cpp" />
     <ClCompile Include="src\IO.cpp" />
+    <ClCompile Include="src\jpegfunc.cpp" />
     <ClCompile Include="src\PCEncoder.cpp" />
     <ClCompile Include="src\RLE.cpp" />
     <ClCompile Include="src\Slice.cpp" />
@@ -155,10 +160,9 @@
     <ClInclude Include="include\common.h" />
     <ClInclude Include="include\huffman.h" />
     <ClInclude Include="include\IO.h" />
+    <ClInclude Include="include\jpegfunc.h" />
     <ClInclude Include="include\RLE.h" />
     <ClInclude Include="include\Slice.h" />
-    <ClInclude Include="include\zconf.h" />
-    <ClInclude Include="include\zlib.h" />
     <ClInclude Include="include\zlibfunc.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
